@@ -1,4 +1,3 @@
-# 📦 Imports
 import streamlit as st
 import nltk
 import whisper
@@ -6,14 +5,11 @@ from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 import string
 
-# 📥 Download necessary NLTK data
 nltk.download('punkt')
 nltk.download('stopwords')
 
-# 📥 Load Whisper model once
 model = whisper.load_model("small")
 
-# 🎨 Optional: Styling (looks better)
 st.markdown(
     """
     <style>
@@ -35,23 +31,22 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# 🚀 Streamlit App
+
 st.subheader("Transcript and Keyword Analysis of Sample Audio")
 
-# ➡️ Directly load your audio file (no uploading by user)
+
 AUDIO_FILE = "phil_lempert_speech.webm"
 
 if AUDIO_FILE:
     st.success("Using sample audio file: phil_lempert_speech.webm")
 
-    # Transcription
+    
     result = model.transcribe(AUDIO_FILE)
     transcript = result['text']
 
     st.subheader("Transcript:")
     st.write(transcript)
 
-    # Text Cleaning
     def clean_text(text):
         tokens = word_tokenize(text.lower())
         clean_tokens = [word for word in tokens if word.isalpha() and word not in stopwords.words('english')]
@@ -59,7 +54,7 @@ if AUDIO_FILE:
 
     tokens = clean_text(transcript)
 
-    # Keyword Extraction
+    
     def extract_keywords(tokens, top_n=10):
         freq_dist = nltk.FreqDist(tokens)
         return freq_dist.most_common(top_n)
@@ -70,7 +65,7 @@ if AUDIO_FILE:
     for word, freq in top_keywords:
         st.write(f"{word}: {freq}")
 
-    # KWIC Viewer
+    
     def kwic_view(text, keyword, window=5):
         words = text.split()
         matches = []
