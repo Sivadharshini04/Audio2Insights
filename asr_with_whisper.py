@@ -1,89 +1,120 @@
 import streamlit as st
-import nltk
 import whisper
+import nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
-import string
+import os
+import atexit
+import tempfile
+from pytube import YouTube
+
 
 nltk.download('punkt')
 nltk.download('stopwords')
 
 model = whisper.load_model("small")
 
-st.markdown(
-    """
-    <style>
-    .main {
-        background-color: #f0f2f6;
-        padding: 20px;
-        border-radius: 10px;
-    }
-    .title {
-        font-size: 36px;
-        color: #4CAF50;
-        text-align: center;
-    }
-    </style>
-    <div class="main">
-        <h1 class="title">Audio2Insights</h1>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+
+@atexit.register
+def cleanup_temp():
+    try:
+        if os.path.exists("downloaded_audio.mp3"):
+            os.remove("downloaded_audio.mp3")
+    except Exception:
+        pass
+
+st.title("Audio2Insights 🔍")
+st.write("Transcribe & analyze audio from file or YouTube.")
+
+option = st.radio("Input Method:", ["Upload Audio File", "YouTube Link"])
+
+transcript = ""
+import yt_dlp
+import uuid
+FFMPEG_PATH = r"C:\ffmpeg-7.1.1-essentials_build\bin"  # update if different
+
+if option == "Upload Audio File":
+    uploaded_file = st.file_uploader("Upload (.mp3/.wav/.webm)", type=["mp3", "wav", "webm"])
+    if uploaded_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp:
+            temp.write(uploaded_file.read())
+            temp_path = temp.name
+        st.success("Transcribing...")
+        result = model.transcribe(temp_path)
+        transcript = result['text']
 
 
-st.subheader("Transcript and Keyword Analysis of Sample Audio")
+elif option == "YouTube Link":
+    yt_link = st.text_input("Paste YouTube Link")
+    if yt_link:
+        try:
+            if os.path.exists("downloaded_audio.mp3"):
+                os.remove("downloaded_audio.mp3")
+
+            unique_name = f"yt_audio_{uuid.uuid4().hex}.mp3"
+
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'outtmpl': 'temp_audio.%(ext)s',
+                'ffmpeg_location': r"C:\ffmpeg-7.1.1-essentials_build\bin",
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '192',
+                }],
+            }
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([yt_link])
+
+            for f in os.listdir():
+                if f.startswith("temp_audio") and f.endswith(".mp3"):
+                    os.rename(f, unique_name)
+
+            st.success("Audio downloaded. Transcribing...")
+            result = model.transcribe(unique_name)
+            transcript = result['text']
+
+            os.remove(unique_name)
+
+        except Exception as e:
+            st.error(f"Error downloading: {e}")
 
 
-AUDIO_FILE = "phil_lempert_speech.webm"
-
-if AUDIO_FILE:
-    st.success("Using sample audio file: phil_lempert_speech.webm")
-
-    
-    result = model.transcribe(AUDIO_FILE)
-    transcript = result['text']
-
-    st.subheader("Transcript:")
+if transcript:
+    st.subheader("Transcript")
     st.write(transcript)
 
     def clean_text(text):
         tokens = word_tokenize(text.lower())
-        clean_tokens = [word for word in tokens if word.isalpha() and word not in stopwords.words('english')]
-        return clean_tokens
+        return [w for w in tokens if w.isalpha() and w not in stopwords.words("english")]
 
     tokens = clean_text(transcript)
 
-    
     def extract_keywords(tokens, top_n=10):
-        freq_dist = nltk.FreqDist(tokens)
-        return freq_dist.most_common(top_n)
+        return nltk.FreqDist(tokens).most_common(top_n)
 
     top_keywords = extract_keywords(tokens)
-    
-    st.subheader("Top Keywords:")
+    st.subheader("Top Keywords")
     for word, freq in top_keywords:
         st.write(f"{word}: {freq}")
 
-    
     def kwic_view(text, keyword, window=5):
         words = text.split()
-        matches = []
+        contexts = []
         for i, word in enumerate(words):
             if keyword.lower() in word.lower():
                 start = max(i - window, 0)
                 end = min(i + window + 1, len(words))
-                matches.append(' '.join(words[start:end]))
-        return matches
+                contexts.append("... " + " ".join(words[start:end]) + " ...")
+        return contexts
 
-    st.subheader("Keyword-in-Context (KWIC) Search")
-    search_keyword = st.text_input("Enter a keyword to search:")
-
-    if search_keyword:
-        contexts = kwic_view(transcript, search_keyword)
-        if contexts:
-            for context in contexts:
-                st.write("...", context, "...")
+    st.subheader("KWIC Search")
+    keyword = st.text_input("Enter keyword:")
+    if keyword:
+        results = kwic_view(transcript, keyword)
+        if results:
+            for r in results:
+                st.write(r)
         else:
-            st.warning(f"No matches found for '{search_keyword}'.")
-
+            st.warning("No matches found.")
